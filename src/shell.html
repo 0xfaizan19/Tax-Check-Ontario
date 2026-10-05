@@ -1,0 +1,88 @@
+<title>Three-Job Tax Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/*__CSS__*/
+</style>
+
+<div class="app">
+  <main class="dash" id="dash">
+    <header>
+      <h1>Three-Job Tax Check</h1>
+      <div class="sub">Ontario · 2026 tax year · <span id="asof"></span> · estimate</div>
+    </header>
+
+    <section class="jobs" id="jobs" aria-label="Jobs"></section>
+
+    <section class="kpis">
+      <div class="kpi">
+        <div class="top"><span class="lbl">Tax withheld</span><span class="line">L43700</span></div>
+        <div class="v num" id="kWith"></div>
+        <div class="d" id="kWithD"></div>
+      </div>
+      <div class="kpi">
+        <div class="top"><span class="lbl">Tax you owe</span><span class="line">L43500</span></div>
+        <div class="v num" id="kOwe"></div>
+        <div class="d" id="kOweD"></div>
+      </div>
+      <div class="kpi" id="kRefBox">
+        <div class="top"><span class="lbl">Refunds &amp; credits</span><span class="line">L44800 · L45000</span></div>
+        <div class="v num" id="kRef"></div>
+        <div class="d" id="kRefD"></div>
+      </div>
+      <div class="kpi due" id="kDueBox">
+        <div class="top"><span class="lbl" id="kDueL">Balance due Apr 30, 2027</span><span class="line">L48500</span></div>
+        <div class="v num" id="kDue"></div>
+        <div class="d" id="kDueD"></div>
+      </div>
+    </section>
+
+    <section class="rooms" aria-label="Registered account room">
+      <div class="room">
+        <div class="top"><span class="lbl">RRSP deduction limit 2026</span><span class="line">CRA My Account · Jan 1, 2026</span></div>
+        <div class="v num"><span class="inl big">$<input id="rrspRoom" inputmode="decimal" aria-label="RRSP deduction limit for 2026" title="Click to edit"></span></div>
+        <div class="d" id="rrspSave"></div>
+      </div>
+      <div class="room">
+        <div class="top"><span class="lbl">TFSA contribution room 2026</span><span class="line">CRA My Account · Jan 1, 2026</span></div>
+        <div class="v num"><span class="inl big">$<input id="tfsaRoom" inputmode="decimal" aria-label="TFSA contribution room for 2026" title="Click to edit"></span></div>
+        <div class="d">Click the number to edit it. No deduction, but growth and withdrawals are tax-free.</div>
+      </div>
+    </section>
+
+    <section class="bottom">
+      <div class="panel">
+        <h2 id="barTitle"></h2>
+        <div class="bar" id="bar" role="img"></div>
+        <div class="legend" id="legend"></div>
+        <p class="why" id="why"></p>
+      </div>
+      <div class="panel">
+        <h2>Worth knowing</h2>
+        <div class="facts" id="facts"></div>
+      </div>
+    </section>
+
+    <p class="fine">2026 federal and Ontario rates, credits and benefit formulas (benefits use July 2026 amounts until the 2027 figures are published). Withholding is modelled as each employer taxing its salary as your only income. Not tax advice; confirm large claims with a tax professional.</p>
+  </main>
+
+  <aside class="sv" aria-label="Your situation">
+    <div class="sv-head">
+      <div class="sv-title">
+        <h2>Your situation</h2>
+        <span class="sv-sum" id="svSum"></span>
+      </div>
+      <button type="button" class="btn-ghost" id="svReset" title="Switches every option off. Your entries, notes and favorites are kept.">Turn all off</button>
+    </div>
+    <div class="sv-search">
+      <input type="search" id="svSearch" placeholder="Search credits, deductions, programs" aria-label="Search tax savers" autocomplete="off">
+    </div>
+    <nav class="sv-tabs" id="svTabs" role="tablist" aria-label="Categories"></nav>
+    <div class="sv-list" id="svList"></div>
+  </aside>
+</div>
+
+<script>
+/*__JS__*/
+</script>
