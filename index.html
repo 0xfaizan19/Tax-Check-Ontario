@@ -12,7 +12,7 @@
 /* Layout: two panes on one screen — the tax console on the left, "Your situation" switches on the right (its list scrolls inside itself) */
 :root{
   --bg:#f3f5f4; --surface:#ffffff; --sunk:#f7f9f8; --ink:#14191c; --ink-2:#4b5458; --ink-3:#737c82; --line:#dde2e0; --line-2:#c9d0cd;
-  --accent:#1d4e89; --accent-soft:#e6eef8; --on-accent:#ffffff;
+  --accent:#1d4e89; --accent-soft:#e6eef8; --on-accent:#ffffff; --on-good:#ffffff;
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#c6cdca;
   --due:#b42318; --due-soft:#fdeceb; --good:#177a47; --good-soft:#e5f4ec; --warn:#8a5a00; --warn-soft:#fdf3dc;
   --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
@@ -21,13 +21,13 @@
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#101315; --surface:#181c1f; --sunk:#14181a; --ink:#edf1ef; --ink-2:#b3bbbe; --ink-3:#8a9397; --line:#2a3033; --line-2:#3a4145;
-  --accent:#80b1ef; --accent-soft:#1a2a3d; --on-accent:#0d1a2a;
+  --accent:#80b1ef; --accent-soft:#1a2a3d; --on-accent:#0d1a2a; --on-good:#0b2416;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#4b5357;
   --due:#ff8f85; --due-soft:#3a1a18; --good:#6cd39b; --good-soft:#14301f; --warn:#f0c060; --warn-soft:#352a12;
   color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#101315; --surface:#181c1f; --sunk:#14181a; --ink:#edf1ef; --ink-2:#b3bbbe; --ink-3:#8a9397; --line:#2a3033; --line-2:#3a4145;
-  --accent:#80b1ef; --accent-soft:#1a2a3d; --on-accent:#0d1a2a;
+  --accent:#80b1ef; --accent-soft:#1a2a3d; --on-accent:#0d1a2a; --on-good:#0b2416;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#4b5357;
   --due:#ff8f85; --due-soft:#3a1a18; --good:#6cd39b; --good-soft:#14301f; --warn:#f0c060; --warn-soft:#352a12;
   color-scheme:dark}
@@ -145,6 +145,11 @@ h1{font:700 22px/1.1 var(--f-display);margin:0;letter-spacing:-.015em;text-wrap:
 .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .tab .c{font:600 10.5px/1 var(--f-body);background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:2px 5px}
 .tab[aria-selected="true"] .c{background:var(--on-accent);color:var(--accent)}
+.tab[data-tab="direct"]{background:var(--good-soft);border-color:var(--good);color:var(--good);font-weight:600}
+.tab[data-tab="direct"]:hover{color:var(--good);border-color:var(--good)}
+.tab[data-tab="direct"] .c{background:var(--good);color:var(--on-good)}
+.tab[data-tab="direct"][aria-selected="true"]{background:var(--good);border-color:var(--good);color:var(--on-good)}
+.tab[data-tab="direct"][aria-selected="true"] .c{background:var(--on-good);color:var(--good)}
 .sv-list{flex:1;min-height:0;overflow:auto;padding:4px 14px 14px;overscroll-behavior:contain}
 .sv-note{font-size:12px;color:var(--ink-3);padding:10px 0 2px;margin:0}
 
@@ -4650,16 +4655,40 @@ ITEMS.push({
   val: (R, S, D) => ({ n: D.refund, t: D.refund ? fmt(D.refund) + " back" : "$0 with one job" })
 });
 
-const CAT_LABEL = { on: "On", fav: "Favorites", family: "Family", savings: "Savings", work: "Work", health: "Health", home: "Home", learning: "School", giving: "Giving", investing: "Investing", ontario: "Ontario", other: "Other", ended: "Ended" };
+const CAT_LABEL = { on: "On", fav: "Favorites", direct: "Direct Tax Savings", family: "Family", savings: "Savings", work: "Work", health: "Health", home: "Home", learning: "School", giving: "Giving", investing: "Investing", ontario: "Ontario", other: "Other", ended: "Ended" };
 const CAT_NOTE = {
   on: "Everything you've switched on, biggest saving first.",
   fav: "Options you've starred, whether they're on or off.",
+  direct: "Everything that lowers your taxable income, gives you a tax credit, or cuts your balance owing. Each one also stays in its own tab.",
   family: "Start here. Switch on whatever describes your household; children, a spouse and dependants also feed benefits in other tabs.",
   ontario: "Ontario-only credits and programs. The ones at the bottom are applied for you automatically.",
   ended: "These no longer exist for 2026. They're listed so you don't go looking for them.",
   other: "Special situations. The top-up credit at the bottom is applied automatically."
 };
 const BY = Object.fromEntries(ITEMS.map(d => [d.id, d]));
+
+// Direct Tax Savings: an overlap tab. An option qualifies when switching it on changes a deduction,
+// tax credit or refundable credit (not just benefits). Found by running each option; a few that are
+// $0 in these test cases are listed by hand, and benefit-only automatic rows are left out.
+const DIRECT = (() => {
+  const keys = ["ded", "dedTI", "capLoss", "fed", "on", "fedMed", "onMed", "fedMedOther", "onMedOther", "gifts", "giftsFull", "fedPol", "fedCr", "onCr", "onCrPost", "fedRef", "onRef", "redDeps"];
+  const set = new Set(["auto_on_reduction", "auto_lift", "auto_topup", "auto_cpp_ei", "auto_cwb", "rmes", "seniors_care_home", "inv_rental", "inv_collectibles"]);
+  const defs = d => { const v = {}; for (const f of d.fields || []) v[f.k] = f.def; if (d.rows) v.rows = [Object.fromEntries(d.rows.fields.map(f => [f.k, f.def]))]; return v; };
+  const autos = ITEMS.filter(d => d.kind === "auto").map(d => ({ def: d, v: {} }));
+  const ctxs = [[], ["spouse", "children", "pension_income"]];
+  for (const d of ITEMS) {
+    if (d.kind !== "calc" || set.has(d.id)) continue;
+    test: for (const ex of ctxs) for (const emp of [292500, 90000]) {
+      const list = [...autos, ...ex.filter(id => id !== d.id && BY[id]).map(id => ({ def: BY[id], v: defs(BY[id]) })), { def: d, v: defs(d) }];
+      try {
+        const a = compute(emp, list, null).C, b = compute(emp, list, d.id).C;
+        if (keys.some(k => Math.abs((a[k] || 0) - (b[k] || 0)) > 1e-9)) { set.add(d.id); break test; }
+      } catch (e) { /* an option that can't run in this test case is checked in the next one */ }
+    }
+  }
+  return set;
+})();
+const CAT_ORDER = ["family", "savings", "work", "health", "home", "learning", "giving", "investing", "ontario", "other"];
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const pct = n => (n * 100).toFixed(1) + "%";
@@ -4857,7 +4886,7 @@ function fieldHTML(d, f, val, ri) {
   const wide = f.label.length > 38 ? " wide" : "";
   return `<label class="f${wide}" data-fk="${f.k}" for="${id}"><span>${esc(f.label)}${f.type === "pct" ? " (%)" : ""}</span>${ctl}</label>`;
 }
-const showCat = () => !!S.q.trim() || S.tab === "on" || S.tab === "fav";
+const showCat = () => !!S.q.trim() || S.tab === "on" || S.tab === "fav" || S.tab === "direct";
 const starBtn = d => { const f = !!S.fav[d.id]; return `<button type="button" class="star" data-star aria-pressed="${f}" aria-label="${f ? "Remove from" : "Add to"} favorites" title="${f ? "Remove from" : "Add to"} favorites">${f ? "★" : "☆"}</button>`; };
 function savedTag(d) {
   const s = S.sv[d.id];
@@ -4897,6 +4926,11 @@ function listItems() {
     return ITEMS.filter(d => { const h = [d.q, d.name, d.hint, d.tags, d.lines, d.tip, CAT_LABEL[d.cat], S.sv[d.id] && S.sv[d.id].note].join(" ").toLowerCase(); return terms.every(t => h.includes(t)); });
   }
   if (S.tab === "fav") return ITEMS.filter(d => S.fav[d.id]);
+  if (S.tab === "direct") {
+    const ds = ITEMS.filter(d => DIRECT.has(d.id));
+    const byCat = c => ds.filter(d => d.cat === c && d.kind === "calc");
+    return [...CAT_ORDER.flatMap(byCat), ...ds.filter(d => d.kind === "auto")];
+  }
   if (S.tab === "on") return ITEMS.filter(d => (d.kind === "calc" || d.kind === "tip") && isOn(d)).sort((a, b) => (L.saves[b.id] || 0) - (L.saves[a.id] || 0));
   const inCat = ITEMS.filter(d => d.cat === S.tab);
   return [...inCat.filter(d => d.kind === "calc" || d.kind === "tip"), ...inCat.filter(d => d.kind === "auto"), ...inCat.filter(d => d.kind === "ended")];
@@ -4907,7 +4941,8 @@ function renderTabs() {
   for (const d of ITEMS) if ((d.kind === "calc" || d.kind === "tip") && isOn(d)) { counts[d.cat] = (counts[d.cat] || 0) + 1; total++; }
   counts.on = total;
   counts.fav = ITEMS.filter(d => S.fav[d.id]).length;
-  const tabs = ["on", "fav", "family", "savings", "work", "health", "home", "learning", "giving", "investing", "ontario", "other", "ended"].filter(c => c === "on" || c === "fav" || ITEMS.some(d => d.cat === c));
+  counts.direct = ITEMS.filter(d => DIRECT.has(d.id) && d.kind === "calc" && isOn(d)).length;
+  const tabs = ["on", "fav", "direct", "family", "savings", "work", "health", "home", "learning", "giving", "investing", "ontario", "other", "ended"].filter(c => c === "on" || c === "fav" || c === "direct" || ITEMS.some(d => d.cat === c));
   $("svTabs").innerHTML = tabs.map(c => `<button type="button" class="tab" role="tab" data-tab="${c}" aria-selected="${!S.q && S.tab === c}">${CAT_LABEL[c]}${counts[c] ? `<span class="c">${counts[c]}</span>` : ""}</button>`).join("");
   const sit = L.base.net - L.R.net;
   $("svSum").innerHTML = total ? `${total} switched on · <b>saves ${fmt(sit)}</b>` : `${ITEMS.filter(d => d.kind !== "auto").length} credits, deductions, programs and strategies`;
