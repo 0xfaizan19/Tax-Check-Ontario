@@ -7,16 +7,40 @@ ITEMS.push({
   val: (R, S, D) => ({ n: D.refund, t: D.refund ? fmt(D.refund) + " back" : "$0 with one job" })
 });
 
-const CAT_LABEL = { on: "On", fav: "Favorites", family: "Family", savings: "Savings", work: "Work", health: "Health", home: "Home", learning: "School", giving: "Giving", investing: "Investing", ontario: "Ontario", other: "Other", ended: "Ended" };
+const CAT_LABEL = { on: "On", fav: "Favorites", direct: "Direct Tax Savings", family: "Family", savings: "Savings", work: "Work", health: "Health", home: "Home", learning: "School", giving: "Giving", investing: "Investing", ontario: "Ontario", other: "Other", ended: "Ended" };
 const CAT_NOTE = {
   on: "Everything you've switched on, biggest saving first.",
   fav: "Options you've starred, whether they're on or off.",
+  direct: "Everything that lowers your taxable income, gives you a tax credit, or cuts your balance owing. Each one also stays in its own tab.",
   family: "Start here. Switch on whatever describes your household; children, a spouse and dependants also feed benefits in other tabs.",
   ontario: "Ontario-only credits and programs. The ones at the bottom are applied for you automatically.",
   ended: "These no longer exist for 2026. They're listed so you don't go looking for them.",
   other: "Special situations. The top-up credit at the bottom is applied automatically."
 };
 const BY = Object.fromEntries(ITEMS.map(d => [d.id, d]));
+
+// Direct Tax Savings: an overlap tab. An option qualifies when switching it on changes a deduction,
+// tax credit or refundable credit (not just benefits). Found by running each option; a few that are
+// $0 in these test cases are listed by hand, and benefit-only automatic rows are left out.
+const DIRECT = (() => {
+  const keys = ["ded", "dedTI", "capLoss", "fed", "on", "fedMed", "onMed", "fedMedOther", "onMedOther", "gifts", "giftsFull", "fedPol", "fedCr", "onCr", "onCrPost", "fedRef", "onRef", "redDeps"];
+  const set = new Set(["auto_on_reduction", "auto_lift", "auto_topup", "auto_cpp_ei", "auto_cwb", "rmes", "seniors_care_home", "inv_rental", "inv_collectibles"]);
+  const defs = d => { const v = {}; for (const f of d.fields || []) v[f.k] = f.def; if (d.rows) v.rows = [Object.fromEntries(d.rows.fields.map(f => [f.k, f.def]))]; return v; };
+  const autos = ITEMS.filter(d => d.kind === "auto").map(d => ({ def: d, v: {} }));
+  const ctxs = [[], ["spouse", "children", "pension_income"]];
+  for (const d of ITEMS) {
+    if (d.kind !== "calc" || set.has(d.id)) continue;
+    test: for (const ex of ctxs) for (const emp of [292500, 90000]) {
+      const list = [...autos, ...ex.filter(id => id !== d.id && BY[id]).map(id => ({ def: BY[id], v: defs(BY[id]) })), { def: d, v: defs(d) }];
+      try {
+        const a = compute(emp, list, null).C, b = compute(emp, list, d.id).C;
+        if (keys.some(k => Math.abs((a[k] || 0) - (b[k] || 0)) > 1e-9)) { set.add(d.id); break test; }
+      } catch (e) { /* an option that can't run in this test case is checked in the next one */ }
+    }
+  }
+  return set;
+})();
+const CAT_ORDER = ["family", "savings", "work", "health", "home", "learning", "giving", "investing", "ontario", "other"];
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const pct = n => (n * 100).toFixed(1) + "%";
@@ -214,7 +238,7 @@ function fieldHTML(d, f, val, ri) {
   const wide = f.label.length > 38 ? " wide" : "";
   return `<label class="f${wide}" data-fk="${f.k}" for="${id}"><span>${esc(f.label)}${f.type === "pct" ? " (%)" : ""}</span>${ctl}</label>`;
 }
-const showCat = () => !!S.q.trim() || S.tab === "on" || S.tab === "fav";
+const showCat = () => !!S.q.trim() || S.tab === "on" || S.tab === "fav" || S.tab === "direct";
 const starBtn = d => { const f = !!S.fav[d.id]; return `<button type="button" class="star" data-star aria-pressed="${f}" aria-label="${f ? "Remove from" : "Add to"} favorites" title="${f ? "Remove from" : "Add to"} favorites">${f ? "★" : "☆"}</button>`; };
 function savedTag(d) {
   const s = S.sv[d.id];
@@ -254,6 +278,11 @@ function listItems() {
     return ITEMS.filter(d => { const h = [d.q, d.name, d.hint, d.tags, d.lines, d.tip, CAT_LABEL[d.cat], S.sv[d.id] && S.sv[d.id].note].join(" ").toLowerCase(); return terms.every(t => h.includes(t)); });
   }
   if (S.tab === "fav") return ITEMS.filter(d => S.fav[d.id]);
+  if (S.tab === "direct") {
+    const ds = ITEMS.filter(d => DIRECT.has(d.id));
+    const byCat = c => ds.filter(d => d.cat === c && d.kind === "calc");
+    return [...CAT_ORDER.flatMap(byCat), ...ds.filter(d => d.kind === "auto")];
+  }
   if (S.tab === "on") return ITEMS.filter(d => (d.kind === "calc" || d.kind === "tip") && isOn(d)).sort((a, b) => (L.saves[b.id] || 0) - (L.saves[a.id] || 0));
   const inCat = ITEMS.filter(d => d.cat === S.tab);
   return [...inCat.filter(d => d.kind === "calc" || d.kind === "tip"), ...inCat.filter(d => d.kind === "auto"), ...inCat.filter(d => d.kind === "ended")];
@@ -264,7 +293,8 @@ function renderTabs() {
   for (const d of ITEMS) if ((d.kind === "calc" || d.kind === "tip") && isOn(d)) { counts[d.cat] = (counts[d.cat] || 0) + 1; total++; }
   counts.on = total;
   counts.fav = ITEMS.filter(d => S.fav[d.id]).length;
-  const tabs = ["on", "fav", "family", "savings", "work", "health", "home", "learning", "giving", "investing", "ontario", "other", "ended"].filter(c => c === "on" || c === "fav" || ITEMS.some(d => d.cat === c));
+  counts.direct = ITEMS.filter(d => DIRECT.has(d.id) && d.kind === "calc" && isOn(d)).length;
+  const tabs = ["on", "fav", "direct", "family", "savings", "work", "health", "home", "learning", "giving", "investing", "ontario", "other", "ended"].filter(c => c === "on" || c === "fav" || c === "direct" || ITEMS.some(d => d.cat === c));
   $("svTabs").innerHTML = tabs.map(c => `<button type="button" class="tab" role="tab" data-tab="${c}" aria-selected="${!S.q && S.tab === c}">${CAT_LABEL[c]}${counts[c] ? `<span class="c">${counts[c]}</span>` : ""}</button>`).join("");
   const sit = L.base.net - L.R.net;
   $("svSum").innerHTML = total ? `${total} switched on · <b>saves ${fmt(sit)}</b>` : `${ITEMS.filter(d => d.kind !== "auto").length} credits, deductions, programs and strategies`;

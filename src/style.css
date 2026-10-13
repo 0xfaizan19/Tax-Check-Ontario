@@ -1,7 +1,7 @@
 /* Layout: two panes on one screen — the tax console on the left, "Your situation" switches on the right (its list scrolls inside itself) */
 :root{
   --bg:#f3f5f4; --surface:#ffffff; --sunk:#f7f9f8; --ink:#14191c; --ink-2:#4b5458; --ink-3:#737c82; --line:#dde2e0; --line-2:#c9d0cd;
-  --accent:#1d4e89; --accent-soft:#e6eef8; --on-accent:#ffffff;
+  --accent:#1d4e89; --accent-soft:#e6eef8; --on-accent:#ffffff; --on-good:#ffffff;
   --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#c6cdca;
   --due:#b42318; --due-soft:#fdeceb; --good:#177a47; --good-soft:#e5f4ec; --warn:#8a5a00; --warn-soft:#fdf3dc;
   --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
@@ -10,13 +10,13 @@
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#101315; --surface:#181c1f; --sunk:#14181a; --ink:#edf1ef; --ink-2:#b3bbbe; --ink-3:#8a9397; --line:#2a3033; --line-2:#3a4145;
-  --accent:#80b1ef; --accent-soft:#1a2a3d; --on-accent:#0d1a2a;
+  --accent:#80b1ef; --accent-soft:#1a2a3d; --on-accent:#0d1a2a; --on-good:#0b2416;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#4b5357;
   --due:#ff8f85; --due-soft:#3a1a18; --good:#6cd39b; --good-soft:#14301f; --warn:#f0c060; --warn-soft:#352a12;
   color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#101315; --surface:#181c1f; --sunk:#14181a; --ink:#edf1ef; --ink-2:#b3bbbe; --ink-3:#8a9397; --line:#2a3033; --line-2:#3a4145;
-  --accent:#80b1ef; --accent-soft:#1a2a3d; --on-accent:#0d1a2a;
+  --accent:#80b1ef; --accent-soft:#1a2a3d; --on-accent:#0d1a2a; --on-good:#0b2416;
   --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#4b5357;
   --due:#ff8f85; --due-soft:#3a1a18; --good:#6cd39b; --good-soft:#14301f; --warn:#f0c060; --warn-soft:#352a12;
   color-scheme:dark}
@@ -134,6 +134,11 @@ h1{font:700 22px/1.1 var(--f-display);margin:0;letter-spacing:-.015em;text-wrap:
 .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .tab .c{font:600 10.5px/1 var(--f-body);background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:2px 5px}
 .tab[aria-selected="true"] .c{background:var(--on-accent);color:var(--accent)}
+.tab[data-tab="direct"]{background:var(--good-soft);border-color:var(--good);color:var(--good);font-weight:600}
+.tab[data-tab="direct"]:hover{color:var(--good);border-color:var(--good)}
+.tab[data-tab="direct"] .c{background:var(--good);color:var(--on-good)}
+.tab[data-tab="direct"][aria-selected="true"]{background:var(--good);border-color:var(--good);color:var(--on-good)}
+.tab[data-tab="direct"][aria-selected="true"] .c{background:var(--on-good);color:var(--good)}
 .sv-list{flex:1;min-height:0;overflow:auto;padding:4px 14px 14px;overscroll-behavior:contain}
 .sv-note{font-size:12px;color:var(--ink-3);padding:10px 0 2px;margin:0}
 
