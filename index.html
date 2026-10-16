@@ -199,6 +199,7 @@ h1{font:700 22px/1.1 var(--f-display);margin:0;letter-spacing:-.015em;text-wrap:
 .star:hover{color:var(--warn)}
 .star[aria-pressed="true"]{color:var(--warn)}
 .star:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.auto-tag{font-style:normal;font-size:10.5px;color:var(--good);font-weight:600;margin-left:4px}
 .has-note{color:var(--warn);font-weight:600}
 .tiptext{margin:0;font-size:12.5px;color:var(--ink);background:var(--accent-soft);border-radius:8px;padding:8px 10px}
 
@@ -3522,6 +3523,9 @@ function igOther(v) {
 }
 
 // Items record their minimum-tax preference amounts (extra adjusted taxable income) in prof
+// Smith Manoeuvre on an interest-only loan
+function smEst(v) { return num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12; }
+function smPaid(v) { return v.paid == null || v.paid === "" ? smEst(v) : pos(num(v.paid)); }
 function igPref(X, amt) { X.hh.amtPref = (X.hh.amtPref || 0) + pos(amt); }
 
 // Post-phase federal minimum tax (T691) estimate with an optional extra capital gain g.
@@ -3886,17 +3890,19 @@ ITEMS.push(
     { k: "rate", label: "Interest rate (%)", type: "pct", def: 5 },
     { k: "months", label: "Months the loan was invested in 2026", type: "int", def: 12, min: 0, max: 12 },
     { k: "done", label: "I've done this: the loan is set up and invested in income-paying investments", type: "bool", def: false },
-    { k: "paid", label: "Interest paid in 2026 (total from my loan statements)", type: "money", def: 5000, show: v => !!v.done }
+    // Blank (null) = calculated as loan x rate x months; typing a statement total overrides it
+    { k: "paid", label: "Interest paid in 2026", type: "money", def: null, show: v => !!v.done,
+      auto: v => num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12 }
   ],
-  prof(v, C, X) { if (v.done) igPref(X, .5 * num(v.paid)); },   // AMT adds back half, as for line 22100
-  ded(v, C, X) { if (v.done) C.ded += pos(num(v.paid)); },      // line 22100 carrying charges, once it's real
+  prof(v, C, X) { if (v.done) igPref(X, .5 * smPaid(v)); },   // AMT adds back half, as for line 22100
+  ded(v, C, X) { if (v.done) C.ded += smPaid(v); },           // line 22100 carrying charges, once it's real
   post(v, C, X) {
     // Interest-only: the balance never shrinks, so interest = loan x rate for each month invested
-    const est = num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12;
+    const est = smEst(v);
     if (v.done) {
-      const paid = pos(num(v.paid));
-      X.say(`Deducting ${fmt(paid)} of investment-loan interest on line 22100.`);
-      if (est > 0 && Math.abs(paid - est) > .1 * est) X.say(`Loan × rate × months gives ${fmt(est)}. Check that against your statements.`);
+      const paid = smPaid(v), own = v.paid != null && v.paid !== "";
+      X.say(`Deducting ${fmt(paid)} of investment-loan interest on line 22100${own ? " (your statement total)" : " (loan × rate × months)"}.`);
+      if (own && est > 0 && Math.abs(paid - est) > .1 * est) X.say(`Loan × rate × months gives ${fmt(est)}. Check that against your statements.`);
       X.say("Don't also enter this interest under \"I pay interest or fees to earn investment income\", or it's counted twice.");
       return;
     }
@@ -4724,11 +4730,12 @@ try {
     if (o.fav && typeof o.fav === "object") S.fav = o.fav;
     if (o.room && typeof o.room === "object") Object.assign(S.room, o.room);
     // one-time: the RRSP limit now comes from CRA My Account ($25,382) instead of the $33,810 example
+    if (!o.mig2 && S.sv.inv_debt_swap && S.sv.inv_debt_swap.v && num(S.sv.inv_debt_swap.v.paid) === 5000) S.sv.inv_debt_swap.v.paid = null;
     if (!o.mig1 && S.sv.rrsp && S.sv.rrsp.v && num(S.sv.rrsp.v.limit) === 33810) S.sv.rrsp.v.limit = 25382;
     if (o.tab && CAT_LABEL[o.tab]) S.tab = o.tab;
   }
 } catch (e) { /* storage unavailable: start fresh */ }
-function save() { try { localStorage.setItem(KEY, JSON.stringify({ jobs: S.jobs.map(({ id, pay, on }) => ({ id, pay, on })), sv: S.sv, fav: S.fav, room: S.room, mig1: 1, tab: S.tab })); } catch (e) { } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify({ jobs: S.jobs.map(({ id, pay, on }) => ({ id, pay, on })), sv: S.sv, fav: S.fav, room: S.room, mig1: 1, mig2: 1, tab: S.tab })); } catch (e) { } }
 
 const rowDefaults = d => Object.fromEntries(d.rows.fields.map(f => [f.k, f.def]));
 function defaultsOf(d) {
@@ -4893,12 +4900,14 @@ function fieldHTML(d, f, val, ri) {
   let ctl;
   if (f.type === "select") ctl = `<select id="${id}" ${data}>${f.opts.map(([o, l]) => `<option value="${esc(o)}" ${o === val ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   else {
-    const shown = f.type === "money" ? num(val).toLocaleString("en-CA") : String(val == null ? "" : val);
+    const autoMode = f.auto && (val == null || val === "");
+    const shown = f.type === "money" ? (autoMode ? Math.round(f.auto(ri == null ? st(d.id).v : st(d.id).v.rows[ri])).toLocaleString("en-CA") : num(val).toLocaleString("en-CA")) : String(val == null ? "" : val);
     ctl = `<input type="text" id="${id}" ${data} inputmode="${f.type === "int" ? "numeric" : "decimal"}" value="${esc(shown)}">`;
     if (f.type === "money") ctl = `<div class="money"><i>$</i>${ctl}</div>`;
   }
   const wide = f.label.length > 38 ? " wide" : "";
-  return `<label class="f${wide}" data-fk="${f.k}" for="${id}"><span>${esc(f.label)}${f.type === "pct" ? " (%)" : ""}</span>${ctl}</label>`;
+  const tag = f.auto ? ` <i class="auto-tag" data-autotag>${val == null || val === "" ? "calculated" : "your figure · clear to recalculate"}</i>` : "";
+  return `<label class="f${wide}" data-fk="${f.k}" for="${id}"><span>${esc(f.label)}${f.type === "pct" ? " (%)" : ""}${tag}</span>${ctl}</label>`;
 }
 const showCat = () => !!S.q.trim() || S.tab === "on" || S.tab === "fav" || S.tab === "direct";
 const starBtn = d => { const f = !!S.fav[d.id]; return `<button type="button" class="star" data-star aria-pressed="${f}" aria-label="${f ? "Remove from" : "Add to"} favorites" title="${f ? "Remove from" : "Add to"} favorites">${f ? "★" : "☆"}</button>`; };
@@ -4980,6 +4989,12 @@ function fillCards() {
     if (isOn(d) && d.kind !== "auto") {
       const v = st(d.id).v;
       for (const f of d.fields || []) if (f.show) { const w = el.querySelector(`.it-body > .fields > [data-fk="${f.k}"]`); if (w) w.hidden = !f.show(v, L.R); }
+      for (const f of d.fields || []) if (f.auto) {   // keep calculated figures current as the inputs they use change
+        const w = el.querySelector(`.it-body > .fields > [data-fk="${f.k}"]`); if (!w) continue;
+        const inp = w.querySelector("input"), tg = w.querySelector("[data-autotag]"), auto = v[f.k] == null || v[f.k] === "";
+        if (auto && inp && document.activeElement !== inp) inp.value = Math.round(f.auto(v)).toLocaleString("en-CA");
+        if (tg) tg.textContent = auto ? "calculated" : "your figure · clear to recalculate";
+      }
     }
   }
 }
@@ -4995,6 +5010,7 @@ function refresh() { calc(); renderDash(); renderTabs(); fillCards(); save(); }
 function parseField(f, raw) {
   if (f.type === "bool") return !!raw;
   if (f.type === "select") return raw;
+  if (f.auto && String(raw).trim() === "") return null;   // cleared: back to the calculated figure
   let n = +String(raw).replace(/[^\d.\-]/g, "") || 0;
   if (f.type === "int") n = Math.round(n);
   if (f.type === "pct") n = clamp(n, 0, 100);
@@ -5008,7 +5024,7 @@ function setField(el, fromBlur) {
   const d = BY[card.dataset.id], f = fieldOf(d, el); if (!f) return;
   const s = st(d.id), tgt = el.dataset.r != null ? s.v.rows[+el.dataset.r] : s.v;
   tgt[f.k] = parseField(f, f.type === "bool" ? el.checked : el.value);
-  if (fromBlur && f.type === "money") el.value = num(tgt[f.k]).toLocaleString("en-CA");
+  if (fromBlur && f.type === "money") el.value = (f.auto && tgt[f.k] == null ? Math.round(f.auto(tgt)) : num(tgt[f.k])).toLocaleString("en-CA");
   refresh();
 }
 
