@@ -232,13 +232,13 @@ function fieldHTML(d, f, val, ri) {
   let ctl;
   if (f.type === "select") ctl = `<select id="${id}" ${data}>${f.opts.map(([o, l]) => `<option value="${esc(o)}" ${o === val ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   else {
-    const autoMode = f.auto && (val == null || val === "");
+    const autoMode = f.auto && (f.readonly || val == null || val === "");
     const shown = f.type === "money" ? (autoMode ? Math.round(f.auto(ri == null ? st(d.id).v : st(d.id).v.rows[ri])).toLocaleString("en-CA") : num(val).toLocaleString("en-CA")) : String(val == null ? "" : val);
-    ctl = `<input type="text" id="${id}" ${data} inputmode="${f.type === "int" ? "numeric" : "decimal"}" value="${esc(shown)}">`;
+    ctl = `<input type="text" id="${id}" ${data} inputmode="${f.type === "int" ? "numeric" : "decimal"}" value="${esc(shown)}"${f.readonly ? " readonly" : ""}>`;
     if (f.type === "money") ctl = `<div class="money"><i>$</i>${ctl}</div>`;
   }
   const wide = f.label.length > 38 ? " wide" : "";
-  const tag = f.auto ? ` <i class="auto-tag" data-autotag>${val == null || val === "" ? "calculated" : "your figure · clear to recalculate"}</i>` : "";
+  const tag = f.auto ? ` <i class="auto-tag" data-autotag>${f.readonly || val == null || val === "" ? "calculated" : "your figure · clear to recalculate"}</i>` : "";
   return `<label class="f${wide}" data-fk="${f.k}" for="${id}"><span>${esc(f.label)}${f.type === "pct" ? " (%)" : ""}${tag}</span>${ctl}</label>`;
 }
 const showCat = () => !!S.q.trim() || S.tab === "on" || S.tab === "fav" || S.tab === "direct";
@@ -323,7 +323,7 @@ function fillCards() {
       for (const f of d.fields || []) if (f.show) { const w = el.querySelector(`.it-body > .fields > [data-fk="${f.k}"]`); if (w) w.hidden = !f.show(v, L.R); }
       for (const f of d.fields || []) if (f.auto) {   // keep calculated figures current as the inputs they use change
         const w = el.querySelector(`.it-body > .fields > [data-fk="${f.k}"]`); if (!w) continue;
-        const inp = w.querySelector("input"), tg = w.querySelector("[data-autotag]"), auto = v[f.k] == null || v[f.k] === "";
+        const inp = w.querySelector("input"), tg = w.querySelector("[data-autotag]"), auto = f.readonly || v[f.k] == null || v[f.k] === "";
         if (auto && inp && document.activeElement !== inp) inp.value = Math.round(f.auto(v)).toLocaleString("en-CA");
         if (tg) tg.textContent = auto ? "calculated" : "your figure · clear to recalculate";
       }
@@ -376,7 +376,13 @@ list.addEventListener("input", e => {
   if (e.target.matches("[data-note]")) { st(e.target.closest(".it").dataset.id).note = e.target.value; save(); return; }
   if (e.target.matches("input[type=text][data-k]")) setField(e.target);
 });
-list.addEventListener("focusout", e => { if (e.target.matches("input[type=text][data-k]")) setField(e.target, true); });
+list.addEventListener("focusout", e => {
+  const el = e.target;
+  if (!el.matches("input[type=text][data-k]") || el.readOnly) return;
+  const card = el.closest(".it[data-id]"), f = card && fieldOf(BY[card.dataset.id], el);
+  if (f && f.auto) { fillCards(); return; }   // typed values were already saved on input; just redisplay
+  setField(el, true);
+});
 list.addEventListener("click", e => {
   const star = e.target.closest("[data-star]");
   if (star) {
