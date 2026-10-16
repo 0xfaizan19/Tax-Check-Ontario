@@ -176,6 +176,7 @@ h1{font:700 22px/1.1 var(--f-display);margin:0;letter-spacing:-.015em;text-wrap:
 .f{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:11.5px;color:var(--ink-2)}
 .f.wide,.f.chk{grid-column:1/-1}
 .f input[type=text],.f select{width:100%;background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-size:13px;font-variant-numeric:tabular-nums}
+.f input[readonly]{background:var(--good-soft);border-color:transparent;color:var(--ink);font-weight:600;cursor:default}
 .f input[type=text]:focus,.f select:focus{outline:none;border-color:var(--accent)}
 .f .money{position:relative}
 .f .money i{position:absolute;left:7px;top:50%;transform:translateY(-50%);font-style:normal;color:var(--ink-3);font-size:13px}
@@ -3525,7 +3526,7 @@ function igOther(v) {
 // Items record their minimum-tax preference amounts (extra adjusted taxable income) in prof
 // Smith Manoeuvre on an interest-only loan
 function smEst(v) { return num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12; }
-function smPaid(v) { return v.paid == null || v.paid === "" ? smEst(v) : pos(num(v.paid)); }
+function smPaid(v) { return smEst(v); }   // interest-only loan: the calculated figure is the interest paid
 function igPref(X, amt) { X.hh.amtPref = (X.hh.amtPref || 0) + pos(amt); }
 
 // Post-phase federal minimum tax (T691) estimate with an optional extra capital gain g.
@@ -3887,19 +3888,17 @@ ITEMS.push(
   src: ["deductible_debt_restructuring"],
   fields: [
     { k: "amt", label: "Interest-only investment loan amount", type: "money", def: 100000 },
-    { k: "rate", label: "Interest rate (%)", type: "pct", def: 5 },
+    { k: "rate", label: "Interest rate (%), average if it changed during the year", type: "pct", def: 5 },
     { k: "months", label: "Months the loan was invested in 2026", type: "int", def: 12, min: 0, max: 12 },
-    // Blank (null) = calculated as loan x rate x months; typing a statement total overrides it
-    { k: "paid", label: "Interest paid in 2026", type: "money", def: null,
+    // Always calculated: on an interest-only loan, interest = loan x rate x months / 12
+    { k: "paid", label: "Interest paid in 2026", type: "money", def: null, readonly: true,
       auto: v => num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12 }
   ],
   prof(v, C, X) { igPref(X, .5 * smPaid(v)); },   // AMT adds back half, as for line 22100
   ded(v, C, X) { C.ded += smPaid(v); },           // line 22100 carrying charges
   post(v, C, X) {
     // Interest-only: the balance never shrinks, so interest = loan x rate for each month invested
-    const est = smEst(v), paid = smPaid(v), own = v.paid != null && v.paid !== "";
-    X.say(`Deducting ${fmt(paid)} of investment-loan interest on line 22100${own ? " (your statement total)" : " (loan × rate × months)"}.`);
-    if (own && est > 0 && Math.abs(paid - est) > .1 * est) X.say(`Loan × rate × months gives ${fmt(est)}. Check that against your statements.`);
+    X.say(`Deducting ${fmt(smPaid(v))} of investment-loan interest on line 22100 (loan × rate × months).`);
     X.say("Don't also enter this interest under \"I pay interest or fees to earn investment income\", or it's counted twice.");
   }
 },
@@ -4893,13 +4892,13 @@ function fieldHTML(d, f, val, ri) {
   let ctl;
   if (f.type === "select") ctl = `<select id="${id}" ${data}>${f.opts.map(([o, l]) => `<option value="${esc(o)}" ${o === val ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   else {
-    const autoMode = f.auto && (val == null || val === "");
+    const autoMode = f.auto && (f.readonly || val == null || val === "");
     const shown = f.type === "money" ? (autoMode ? Math.round(f.auto(ri == null ? st(d.id).v : st(d.id).v.rows[ri])).toLocaleString("en-CA") : num(val).toLocaleString("en-CA")) : String(val == null ? "" : val);
-    ctl = `<input type="text" id="${id}" ${data} inputmode="${f.type === "int" ? "numeric" : "decimal"}" value="${esc(shown)}">`;
+    ctl = `<input type="text" id="${id}" ${data} inputmode="${f.type === "int" ? "numeric" : "decimal"}" value="${esc(shown)}"${f.readonly ? " readonly" : ""}>`;
     if (f.type === "money") ctl = `<div class="money"><i>$</i>${ctl}</div>`;
   }
   const wide = f.label.length > 38 ? " wide" : "";
-  const tag = f.auto ? ` <i class="auto-tag" data-autotag>${val == null || val === "" ? "calculated" : "your figure · clear to recalculate"}</i>` : "";
+  const tag = f.auto ? ` <i class="auto-tag" data-autotag>${f.readonly || val == null || val === "" ? "calculated" : "your figure · clear to recalculate"}</i>` : "";
   return `<label class="f${wide}" data-fk="${f.k}" for="${id}"><span>${esc(f.label)}${f.type === "pct" ? " (%)" : ""}${tag}</span>${ctl}</label>`;
 }
 const showCat = () => !!S.q.trim() || S.tab === "on" || S.tab === "fav" || S.tab === "direct";
@@ -4984,7 +4983,7 @@ function fillCards() {
       for (const f of d.fields || []) if (f.show) { const w = el.querySelector(`.it-body > .fields > [data-fk="${f.k}"]`); if (w) w.hidden = !f.show(v, L.R); }
       for (const f of d.fields || []) if (f.auto) {   // keep calculated figures current as the inputs they use change
         const w = el.querySelector(`.it-body > .fields > [data-fk="${f.k}"]`); if (!w) continue;
-        const inp = w.querySelector("input"), tg = w.querySelector("[data-autotag]"), auto = v[f.k] == null || v[f.k] === "";
+        const inp = w.querySelector("input"), tg = w.querySelector("[data-autotag]"), auto = f.readonly || v[f.k] == null || v[f.k] === "";
         if (auto && inp && document.activeElement !== inp) inp.value = Math.round(f.auto(v)).toLocaleString("en-CA");
         if (tg) tg.textContent = auto ? "calculated" : "your figure · clear to recalculate";
       }
@@ -5037,7 +5036,13 @@ list.addEventListener("input", e => {
   if (e.target.matches("[data-note]")) { st(e.target.closest(".it").dataset.id).note = e.target.value; save(); return; }
   if (e.target.matches("input[type=text][data-k]")) setField(e.target);
 });
-list.addEventListener("focusout", e => { if (e.target.matches("input[type=text][data-k]")) setField(e.target, true); });
+list.addEventListener("focusout", e => {
+  const el = e.target;
+  if (!el.matches("input[type=text][data-k]") || el.readOnly) return;
+  const card = el.closest(".it[data-id]"), f = card && fieldOf(BY[card.dataset.id], el);
+  if (f && f.auto) { fillCards(); return; }   // typed values were already saved on input; just redisplay
+  setField(el, true);
+});
 list.addEventListener("click", e => {
   const star = e.target.closest("[data-star]");
   if (star) {
