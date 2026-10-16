@@ -429,20 +429,34 @@ ITEMS.push(
 },
 {
   id: "inv_debt_swap", cat: "investing", kind: "tip",
-  q: "I could restructure my debt so the interest is tax-deductible",
-  name: "Making borrowing interest deductible (debt swap, Smith manoeuvre)",
+  q: "Smith Manoeuvre",
+  name: "Borrow to invest with an interest-only loan so the interest is deductible",
   lines: "L22100",
-  hint: "Interest is deductible only when the borrowed money earns income. Using cash investments to pay down your mortgage, then borrowing to invest, can turn non-deductible interest into a deduction.",
-  tip: "Keep the borrowed money traceable to the investment, for example through a separate loan or line of credit used only to invest. Selling investments to pay the mortgage can trigger capital gains, and buying the same ones back within 30 days denies any loss. The Smith manoeuvre does this gradually by re-borrowing each mortgage payment's principal to invest.",
-  tags: "smith manoeuvre debt swap deductible interest mortgage heloc leverage borrow to invest",
+  hint: "Interest is deductible only when the borrowed money earns income. Pay down your mortgage, then borrow the same amount on an interest-only loan or HELOC used only to invest, and that interest becomes a deduction.",
+  tip: "Use a separate interest-only loan or HELOC that holds nothing but investment borrowing, so the interest on its statements is exactly what you deduct. Invest in things that can pay income (dividend stocks, ETFs, bonds), not growth-only assets or your RRSP or TFSA. Don't use the loan for anything personal, even briefly, or that part's interest stops being deductible. Selling investments to pay the mortgage can trigger capital gains.",
+  tags: "smith manoeuvre maneuver debt swap deductible interest mortgage heloc readvanceable interest-only loan leverage borrow to invest line 22100",
   src: ["deductible_debt_restructuring"],
   fields: [
-    { k: "amt", label: "Debt I could re-borrow to invest", type: "money", def: 100000 },
-    { k: "rate", label: "Interest rate on that debt (%)", type: "pct", def: 5 }
+    { k: "amt", label: "Interest-only investment loan amount", type: "money", def: 100000 },
+    { k: "rate", label: "Interest rate (%)", type: "pct", def: 5 },
+    { k: "months", label: "Months the loan was invested in 2026", type: "int", def: 12, min: 0, max: 12 },
+    { k: "done", label: "I've done this: the loan is set up and invested in income-paying investments", type: "bool", def: false },
+    { k: "paid", label: "Interest paid in 2026 (total from my loan statements)", type: "money", def: 5000, show: v => !!v.done }
   ],
+  prof(v, C, X) { if (v.done) igPref(X, .5 * num(v.paid)); },   // AMT adds back half, as for line 22100
+  ded(v, C, X) { if (v.done) C.ded += pos(num(v.paid)); },      // line 22100 carrying charges, once it's real
   post(v, C, X) {
-    const i = num(v.amt) * num(v.rate) / 100;
-    X.say(`About ${fmt(i)} of interest a year would become deductible, saving about ${fmt(igLess(X, i))} a year at your rate.`);
+    // Interest-only: the balance never shrinks, so interest = loan x rate for each month invested
+    const est = num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12;
+    if (v.done) {
+      const paid = pos(num(v.paid));
+      X.say(`Deducting ${fmt(paid)} of investment-loan interest on line 22100.`);
+      if (est > 0 && Math.abs(paid - est) > .1 * est) X.say(`Loan × rate × months gives ${fmt(est)}. Check that against your statements.`);
+      X.say("Don't also enter this interest under \"I pay interest or fees to earn investment income\", or it's counted twice.");
+      return;
+    }
+    X.say(`On an interest-only loan, ${fmt(est)} of interest would be deductible in 2026, saving about ${fmt(igLess(X, est))} at your rate.`);
+    X.say("Tick \"I've done this\" once the loan is set up and invested, and the interest becomes a real deduction.");
   }
 },
 {
