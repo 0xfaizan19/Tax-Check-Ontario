@@ -431,11 +431,11 @@ ITEMS.push(
   }
 },
 {
-  id: "inv_debt_swap", cat: "investing", kind: "tip",
+  id: "inv_debt_swap", cat: "investing", kind: "calc",
   q: "Smith Manoeuvre",
   name: "Borrow to invest with an interest-only loan so the interest is deductible",
   lines: "L22100",
-  hint: "Interest is deductible only when the borrowed money earns income. Pay down your mortgage, then borrow the same amount on an interest-only loan or HELOC used only to invest, and that interest becomes a deduction.",
+  hint: "Pay down your mortgage, then borrow the same amount on an interest-only loan or HELOC used only to invest. The interest on that loan is deductible because the borrowed money earns income.",
   tip: "Use a separate interest-only loan or HELOC that holds nothing but investment borrowing, so the interest on its statements is exactly what you deduct. Invest in things that can pay income (dividend stocks, ETFs, bonds), not growth-only assets or your RRSP or TFSA. Don't use the loan for anything personal, even briefly, or that part's interest stops being deductible. Selling investments to pay the mortgage can trigger capital gains.",
   tags: "smith manoeuvre maneuver debt swap deductible interest mortgage heloc readvanceable interest-only loan leverage borrow to invest line 22100",
   src: ["deductible_debt_restructuring"],
@@ -443,25 +443,18 @@ ITEMS.push(
     { k: "amt", label: "Interest-only investment loan amount", type: "money", def: 100000 },
     { k: "rate", label: "Interest rate (%)", type: "pct", def: 5 },
     { k: "months", label: "Months the loan was invested in 2026", type: "int", def: 12, min: 0, max: 12 },
-    { k: "done", label: "I've done this: the loan is set up and invested in income-paying investments", type: "bool", def: false },
     // Blank (null) = calculated as loan x rate x months; typing a statement total overrides it
-    { k: "paid", label: "Interest paid in 2026", type: "money", def: null, show: v => !!v.done,
+    { k: "paid", label: "Interest paid in 2026", type: "money", def: null,
       auto: v => num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12 }
   ],
-  prof(v, C, X) { if (v.done) igPref(X, .5 * smPaid(v)); },   // AMT adds back half, as for line 22100
-  ded(v, C, X) { if (v.done) C.ded += smPaid(v); },           // line 22100 carrying charges, once it's real
+  prof(v, C, X) { igPref(X, .5 * smPaid(v)); },   // AMT adds back half, as for line 22100
+  ded(v, C, X) { C.ded += smPaid(v); },           // line 22100 carrying charges
   post(v, C, X) {
     // Interest-only: the balance never shrinks, so interest = loan x rate for each month invested
-    const est = smEst(v);
-    if (v.done) {
-      const paid = smPaid(v), own = v.paid != null && v.paid !== "";
-      X.say(`Deducting ${fmt(paid)} of investment-loan interest on line 22100${own ? " (your statement total)" : " (loan × rate × months)"}.`);
-      if (own && est > 0 && Math.abs(paid - est) > .1 * est) X.say(`Loan × rate × months gives ${fmt(est)}. Check that against your statements.`);
-      X.say("Don't also enter this interest under \"I pay interest or fees to earn investment income\", or it's counted twice.");
-      return;
-    }
-    X.say(`On an interest-only loan, ${fmt(est)} of interest would be deductible in 2026, saving about ${fmt(igLess(X, est))} at your rate.`);
-    X.say("Tick \"I've done this\" once the loan is set up and invested, and the interest becomes a real deduction.");
+    const est = smEst(v), paid = smPaid(v), own = v.paid != null && v.paid !== "";
+    X.say(`Deducting ${fmt(paid)} of investment-loan interest on line 22100${own ? " (your statement total)" : " (loan × rate × months)"}.`);
+    if (own && est > 0 && Math.abs(paid - est) > .1 * est) X.say(`Loan × rate × months gives ${fmt(est)}. Check that against your statements.`);
+    X.say("Don't also enter this interest under \"I pay interest or fees to earn investment income\", or it's counted twice.");
   }
 },
 {
