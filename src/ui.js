@@ -62,11 +62,12 @@ try {
     if (o.fav && typeof o.fav === "object") S.fav = o.fav;
     if (o.room && typeof o.room === "object") Object.assign(S.room, o.room);
     // one-time: the RRSP limit now comes from CRA My Account ($25,382) instead of the $33,810 example
+    if (!o.mig2 && S.sv.inv_debt_swap && S.sv.inv_debt_swap.v && num(S.sv.inv_debt_swap.v.paid) === 5000) S.sv.inv_debt_swap.v.paid = null;
     if (!o.mig1 && S.sv.rrsp && S.sv.rrsp.v && num(S.sv.rrsp.v.limit) === 33810) S.sv.rrsp.v.limit = 25382;
     if (o.tab && CAT_LABEL[o.tab]) S.tab = o.tab;
   }
 } catch (e) { /* storage unavailable: start fresh */ }
-function save() { try { localStorage.setItem(KEY, JSON.stringify({ jobs: S.jobs.map(({ id, pay, on }) => ({ id, pay, on })), sv: S.sv, fav: S.fav, room: S.room, mig1: 1, tab: S.tab })); } catch (e) { } }
+function save() { try { localStorage.setItem(KEY, JSON.stringify({ jobs: S.jobs.map(({ id, pay, on }) => ({ id, pay, on })), sv: S.sv, fav: S.fav, room: S.room, mig1: 1, mig2: 1, tab: S.tab })); } catch (e) { } }
 
 const rowDefaults = d => Object.fromEntries(d.rows.fields.map(f => [f.k, f.def]));
 function defaultsOf(d) {
@@ -231,12 +232,14 @@ function fieldHTML(d, f, val, ri) {
   let ctl;
   if (f.type === "select") ctl = `<select id="${id}" ${data}>${f.opts.map(([o, l]) => `<option value="${esc(o)}" ${o === val ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
   else {
-    const shown = f.type === "money" ? num(val).toLocaleString("en-CA") : String(val == null ? "" : val);
+    const autoMode = f.auto && (val == null || val === "");
+    const shown = f.type === "money" ? (autoMode ? Math.round(f.auto(ri == null ? st(d.id).v : st(d.id).v.rows[ri])).toLocaleString("en-CA") : num(val).toLocaleString("en-CA")) : String(val == null ? "" : val);
     ctl = `<input type="text" id="${id}" ${data} inputmode="${f.type === "int" ? "numeric" : "decimal"}" value="${esc(shown)}">`;
     if (f.type === "money") ctl = `<div class="money"><i>$</i>${ctl}</div>`;
   }
   const wide = f.label.length > 38 ? " wide" : "";
-  return `<label class="f${wide}" data-fk="${f.k}" for="${id}"><span>${esc(f.label)}${f.type === "pct" ? " (%)" : ""}</span>${ctl}</label>`;
+  const tag = f.auto ? ` <i class="auto-tag" data-autotag>${val == null || val === "" ? "calculated" : "your figure · clear to recalculate"}</i>` : "";
+  return `<label class="f${wide}" data-fk="${f.k}" for="${id}"><span>${esc(f.label)}${f.type === "pct" ? " (%)" : ""}${tag}</span>${ctl}</label>`;
 }
 const showCat = () => !!S.q.trim() || S.tab === "on" || S.tab === "fav" || S.tab === "direct";
 const starBtn = d => { const f = !!S.fav[d.id]; return `<button type="button" class="star" data-star aria-pressed="${f}" aria-label="${f ? "Remove from" : "Add to"} favorites" title="${f ? "Remove from" : "Add to"} favorites">${f ? "★" : "☆"}</button>`; };
@@ -318,6 +321,12 @@ function fillCards() {
     if (isOn(d) && d.kind !== "auto") {
       const v = st(d.id).v;
       for (const f of d.fields || []) if (f.show) { const w = el.querySelector(`.it-body > .fields > [data-fk="${f.k}"]`); if (w) w.hidden = !f.show(v, L.R); }
+      for (const f of d.fields || []) if (f.auto) {   // keep calculated figures current as the inputs they use change
+        const w = el.querySelector(`.it-body > .fields > [data-fk="${f.k}"]`); if (!w) continue;
+        const inp = w.querySelector("input"), tg = w.querySelector("[data-autotag]"), auto = v[f.k] == null || v[f.k] === "";
+        if (auto && inp && document.activeElement !== inp) inp.value = Math.round(f.auto(v)).toLocaleString("en-CA");
+        if (tg) tg.textContent = auto ? "calculated" : "your figure · clear to recalculate";
+      }
     }
   }
 }
@@ -333,6 +342,7 @@ function refresh() { calc(); renderDash(); renderTabs(); fillCards(); save(); }
 function parseField(f, raw) {
   if (f.type === "bool") return !!raw;
   if (f.type === "select") return raw;
+  if (f.auto && String(raw).trim() === "") return null;   // cleared: back to the calculated figure
   let n = +String(raw).replace(/[^\d.\-]/g, "") || 0;
   if (f.type === "int") n = Math.round(n);
   if (f.type === "pct") n = clamp(n, 0, 100);
@@ -346,7 +356,7 @@ function setField(el, fromBlur) {
   const d = BY[card.dataset.id], f = fieldOf(d, el); if (!f) return;
   const s = st(d.id), tgt = el.dataset.r != null ? s.v.rows[+el.dataset.r] : s.v;
   tgt[f.k] = parseField(f, f.type === "bool" ? el.checked : el.value);
-  if (fromBlur && f.type === "money") el.value = num(tgt[f.k]).toLocaleString("en-CA");
+  if (fromBlur && f.type === "money") el.value = (f.auto && tgt[f.k] == null ? Math.round(f.auto(tgt)) : num(tgt[f.k])).toLocaleString("en-CA");
   refresh();
 }
 
