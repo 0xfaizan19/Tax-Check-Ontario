@@ -79,7 +79,7 @@ function igOther(v) {
 // Items record their minimum-tax preference amounts (extra adjusted taxable income) in prof
 // Smith Manoeuvre on an interest-only loan
 function smEst(v) { return num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12; }
-function smPaid(v) { return v.paid == null || v.paid === "" ? smEst(v) : pos(num(v.paid)); }
+function smPaid(v) { return smEst(v); }   // interest-only loan: the calculated figure is the interest paid
 function igPref(X, amt) { X.hh.amtPref = (X.hh.amtPref || 0) + pos(amt); }
 
 // Post-phase federal minimum tax (T691) estimate with an optional extra capital gain g.
@@ -441,19 +441,17 @@ ITEMS.push(
   src: ["deductible_debt_restructuring"],
   fields: [
     { k: "amt", label: "Interest-only investment loan amount", type: "money", def: 100000 },
-    { k: "rate", label: "Interest rate (%)", type: "pct", def: 5 },
+    { k: "rate", label: "Interest rate (%), average if it changed during the year", type: "pct", def: 5 },
     { k: "months", label: "Months the loan was invested in 2026", type: "int", def: 12, min: 0, max: 12 },
-    // Blank (null) = calculated as loan x rate x months; typing a statement total overrides it
-    { k: "paid", label: "Interest paid in 2026", type: "money", def: null,
+    // Always calculated: on an interest-only loan, interest = loan x rate x months / 12
+    { k: "paid", label: "Interest paid in 2026", type: "money", def: null, readonly: true,
       auto: v => num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12 }
   ],
   prof(v, C, X) { igPref(X, .5 * smPaid(v)); },   // AMT adds back half, as for line 22100
   ded(v, C, X) { C.ded += smPaid(v); },           // line 22100 carrying charges
   post(v, C, X) {
     // Interest-only: the balance never shrinks, so interest = loan x rate for each month invested
-    const est = smEst(v), paid = smPaid(v), own = v.paid != null && v.paid !== "";
-    X.say(`Deducting ${fmt(paid)} of investment-loan interest on line 22100${own ? " (your statement total)" : " (loan × rate × months)"}.`);
-    if (own && est > 0 && Math.abs(paid - est) > .1 * est) X.say(`Loan × rate × months gives ${fmt(est)}. Check that against your statements.`);
+    X.say(`Deducting ${fmt(smPaid(v))} of investment-loan interest on line 22100 (loan × rate × months).`);
     X.say("Don't also enter this interest under \"I pay interest or fees to earn investment income\", or it's counted twice.");
   }
 },
