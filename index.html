@@ -3874,20 +3874,34 @@ ITEMS.push(
 },
 {
   id: "inv_debt_swap", cat: "investing", kind: "tip",
-  q: "I could restructure my debt so the interest is tax-deductible",
-  name: "Making borrowing interest deductible (debt swap, Smith manoeuvre)",
+  q: "Smith Manoeuvre",
+  name: "Borrow to invest with an interest-only loan so the interest is deductible",
   lines: "L22100",
-  hint: "Interest is deductible only when the borrowed money earns income. Using cash investments to pay down your mortgage, then borrowing to invest, can turn non-deductible interest into a deduction.",
-  tip: "Keep the borrowed money traceable to the investment, for example through a separate loan or line of credit used only to invest. Selling investments to pay the mortgage can trigger capital gains, and buying the same ones back within 30 days denies any loss. The Smith manoeuvre does this gradually by re-borrowing each mortgage payment's principal to invest.",
-  tags: "smith manoeuvre debt swap deductible interest mortgage heloc leverage borrow to invest",
+  hint: "Interest is deductible only when the borrowed money earns income. Pay down your mortgage, then borrow the same amount on an interest-only loan or HELOC used only to invest, and that interest becomes a deduction.",
+  tip: "Use a separate interest-only loan or HELOC that holds nothing but investment borrowing, so the interest on its statements is exactly what you deduct. Invest in things that can pay income (dividend stocks, ETFs, bonds), not growth-only assets or your RRSP or TFSA. Don't use the loan for anything personal, even briefly, or that part's interest stops being deductible. Selling investments to pay the mortgage can trigger capital gains.",
+  tags: "smith manoeuvre maneuver debt swap deductible interest mortgage heloc readvanceable interest-only loan leverage borrow to invest line 22100",
   src: ["deductible_debt_restructuring"],
   fields: [
-    { k: "amt", label: "Debt I could re-borrow to invest", type: "money", def: 100000 },
-    { k: "rate", label: "Interest rate on that debt (%)", type: "pct", def: 5 }
+    { k: "amt", label: "Interest-only investment loan amount", type: "money", def: 100000 },
+    { k: "rate", label: "Interest rate (%)", type: "pct", def: 5 },
+    { k: "months", label: "Months the loan was invested in 2026", type: "int", def: 12, min: 0, max: 12 },
+    { k: "done", label: "I've done this: the loan is set up and invested in income-paying investments", type: "bool", def: false },
+    { k: "paid", label: "Interest paid in 2026 (total from my loan statements)", type: "money", def: 5000, show: v => !!v.done }
   ],
+  prof(v, C, X) { if (v.done) igPref(X, .5 * num(v.paid)); },   // AMT adds back half, as for line 22100
+  ded(v, C, X) { if (v.done) C.ded += pos(num(v.paid)); },      // line 22100 carrying charges, once it's real
   post(v, C, X) {
-    const i = num(v.amt) * num(v.rate) / 100;
-    X.say(`About ${fmt(i)} of interest a year would become deductible, saving about ${fmt(igLess(X, i))} a year at your rate.`);
+    // Interest-only: the balance never shrinks, so interest = loan x rate for each month invested
+    const est = num(v.amt) * num(v.rate) / 100 * clamp(num(v.months), 0, 12) / 12;
+    if (v.done) {
+      const paid = pos(num(v.paid));
+      X.say(`Deducting ${fmt(paid)} of investment-loan interest on line 22100.`);
+      if (est > 0 && Math.abs(paid - est) > .1 * est) X.say(`Loan × rate × months gives ${fmt(est)}. Check that against your statements.`);
+      X.say("Don't also enter this interest under \"I pay interest or fees to earn investment income\", or it's counted twice.");
+      return;
+    }
+    X.say(`On an interest-only loan, ${fmt(est)} of interest would be deductible in 2026, saving about ${fmt(igLess(X, est))} at your rate.`);
+    X.say("Tick \"I've done this\" once the loan is set up and invested, and the interest becomes a real deduction.");
   }
 },
 {
@@ -4672,7 +4686,7 @@ const BY = Object.fromEntries(ITEMS.map(d => [d.id, d]));
 // $0 in these test cases are listed by hand, and benefit-only automatic rows are left out.
 const DIRECT = (() => {
   const keys = ["ded", "dedTI", "capLoss", "fed", "on", "fedMed", "onMed", "fedMedOther", "onMedOther", "gifts", "giftsFull", "fedPol", "fedCr", "onCr", "onCrPost", "fedRef", "onRef", "redDeps"];
-  const set = new Set(["auto_on_reduction", "auto_lift", "auto_topup", "auto_cpp_ei", "auto_cwb", "rmes", "seniors_care_home", "inv_rental", "inv_collectibles"]);
+  const set = new Set(["auto_on_reduction", "auto_lift", "auto_topup", "auto_cpp_ei", "auto_cwb", "rmes", "seniors_care_home", "inv_rental", "inv_collectibles", "inv_debt_swap"]);
   const defs = d => { const v = {}; for (const f of d.fields || []) v[f.k] = f.def; if (d.rows) v.rows = [Object.fromEntries(d.rows.fields.map(f => [f.k, f.def]))]; return v; };
   const autos = ITEMS.filter(d => d.kind === "auto").map(d => ({ def: d, v: {} }));
   const ctxs = [[], ["spouse", "children", "pension_income"]];
@@ -4761,7 +4775,7 @@ function calc() {
   const saves = {};
   for (const a of list) {
     const d = a.def;
-    if (d.kind === "calc" || (d.kind === "auto" && d.post)) saves[d.id] = compute(emp, list, d.id).net - R.net;
+    if (d.kind === "calc" || (d.kind === "tip" && (d.ded || d.cr)) || (d.kind === "auto" && d.post)) saves[d.id] = compute(emp, list, d.id).net - R.net;
   }
   const up = compute(emp + 100, list, null);
   L = { act, emp, wh, withheld, paid, req, refund, R, base, saves, marg: (up.net - R.net) / 100, list };
@@ -4868,7 +4882,7 @@ function badge(d) {
     return `<span class="badge ${r.n > 0.5 ? "save" : r.n < -0.5 ? "cost" : "zero"}">${esc(r.t)}</span>`;
   }
   if (!isOn(d)) return "";
-  if (d.kind === "tip") return `<span class="badge info">Strategy</span>`;
+  if (d.kind === "tip") return (L.saves[d.id] || 0) > 0.5 ? `<span class="badge save">Saves ${fmt(L.saves[d.id])}</span>` : `<span class="badge info">Strategy</span>`;
   const s = L.saves[d.id] || 0;
   return s > 0.5 ? `<span class="badge save">Saves ${fmt(s)}</span>` : s < -0.5 ? `<span class="badge cost">Costs ${fmt(-s)}</span>` : `<span class="badge zero">$0 now</span>`;
 }
@@ -4928,7 +4942,7 @@ function listItems() {
   if (S.tab === "fav") return ITEMS.filter(d => S.fav[d.id]);
   if (S.tab === "direct") {
     const ds = ITEMS.filter(d => DIRECT.has(d.id));
-    const byCat = c => ds.filter(d => d.cat === c && d.kind === "calc");
+    const byCat = c => ds.filter(d => d.cat === c && (d.kind === "calc" || d.kind === "tip"));
     return [...CAT_ORDER.flatMap(byCat), ...ds.filter(d => d.kind === "auto")];
   }
   if (S.tab === "on") return ITEMS.filter(d => (d.kind === "calc" || d.kind === "tip") && isOn(d)).sort((a, b) => (L.saves[b.id] || 0) - (L.saves[a.id] || 0));
@@ -4941,7 +4955,7 @@ function renderTabs() {
   for (const d of ITEMS) if ((d.kind === "calc" || d.kind === "tip") && isOn(d)) { counts[d.cat] = (counts[d.cat] || 0) + 1; total++; }
   counts.on = total;
   counts.fav = ITEMS.filter(d => S.fav[d.id]).length;
-  counts.direct = ITEMS.filter(d => DIRECT.has(d.id) && d.kind === "calc" && isOn(d)).length;
+  counts.direct = ITEMS.filter(d => DIRECT.has(d.id) && (d.kind === "calc" || d.kind === "tip") && isOn(d)).length;
   const tabs = ["on", "fav", "direct", "family", "savings", "work", "health", "home", "learning", "giving", "investing", "ontario", "other", "ended"].filter(c => c === "on" || c === "fav" || c === "direct" || ITEMS.some(d => d.cat === c));
   $("svTabs").innerHTML = tabs.map(c => `<button type="button" class="tab" role="tab" data-tab="${c}" aria-selected="${!S.q && S.tab === c}">${CAT_LABEL[c]}${counts[c] ? `<span class="c">${counts[c]}</span>` : ""}</button>`).join("");
   const sit = L.base.net - L.R.net;
