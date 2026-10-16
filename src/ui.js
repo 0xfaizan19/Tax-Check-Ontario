@@ -24,7 +24,7 @@ const BY = Object.fromEntries(ITEMS.map(d => [d.id, d]));
 // $0 in these test cases are listed by hand, and benefit-only automatic rows are left out.
 const DIRECT = (() => {
   const keys = ["ded", "dedTI", "capLoss", "fed", "on", "fedMed", "onMed", "fedMedOther", "onMedOther", "gifts", "giftsFull", "fedPol", "fedCr", "onCr", "onCrPost", "fedRef", "onRef", "redDeps"];
-  const set = new Set(["auto_on_reduction", "auto_lift", "auto_topup", "auto_cpp_ei", "auto_cwb", "rmes", "seniors_care_home", "inv_rental", "inv_collectibles"]);
+  const set = new Set(["auto_on_reduction", "auto_lift", "auto_topup", "auto_cpp_ei", "auto_cwb", "rmes", "seniors_care_home", "inv_rental", "inv_collectibles", "inv_debt_swap"]);
   const defs = d => { const v = {}; for (const f of d.fields || []) v[f.k] = f.def; if (d.rows) v.rows = [Object.fromEntries(d.rows.fields.map(f => [f.k, f.def]))]; return v; };
   const autos = ITEMS.filter(d => d.kind === "auto").map(d => ({ def: d, v: {} }));
   const ctxs = [[], ["spouse", "children", "pension_income"]];
@@ -113,7 +113,7 @@ function calc() {
   const saves = {};
   for (const a of list) {
     const d = a.def;
-    if (d.kind === "calc" || (d.kind === "auto" && d.post)) saves[d.id] = compute(emp, list, d.id).net - R.net;
+    if (d.kind === "calc" || (d.kind === "tip" && (d.ded || d.cr)) || (d.kind === "auto" && d.post)) saves[d.id] = compute(emp, list, d.id).net - R.net;
   }
   const up = compute(emp + 100, list, null);
   L = { act, emp, wh, withheld, paid, req, refund, R, base, saves, marg: (up.net - R.net) / 100, list };
@@ -220,7 +220,7 @@ function badge(d) {
     return `<span class="badge ${r.n > 0.5 ? "save" : r.n < -0.5 ? "cost" : "zero"}">${esc(r.t)}</span>`;
   }
   if (!isOn(d)) return "";
-  if (d.kind === "tip") return `<span class="badge info">Strategy</span>`;
+  if (d.kind === "tip") return (L.saves[d.id] || 0) > 0.5 ? `<span class="badge save">Saves ${fmt(L.saves[d.id])}</span>` : `<span class="badge info">Strategy</span>`;
   const s = L.saves[d.id] || 0;
   return s > 0.5 ? `<span class="badge save">Saves ${fmt(s)}</span>` : s < -0.5 ? `<span class="badge cost">Costs ${fmt(-s)}</span>` : `<span class="badge zero">$0 now</span>`;
 }
@@ -280,7 +280,7 @@ function listItems() {
   if (S.tab === "fav") return ITEMS.filter(d => S.fav[d.id]);
   if (S.tab === "direct") {
     const ds = ITEMS.filter(d => DIRECT.has(d.id));
-    const byCat = c => ds.filter(d => d.cat === c && d.kind === "calc");
+    const byCat = c => ds.filter(d => d.cat === c && (d.kind === "calc" || d.kind === "tip"));
     return [...CAT_ORDER.flatMap(byCat), ...ds.filter(d => d.kind === "auto")];
   }
   if (S.tab === "on") return ITEMS.filter(d => (d.kind === "calc" || d.kind === "tip") && isOn(d)).sort((a, b) => (L.saves[b.id] || 0) - (L.saves[a.id] || 0));
@@ -293,7 +293,7 @@ function renderTabs() {
   for (const d of ITEMS) if ((d.kind === "calc" || d.kind === "tip") && isOn(d)) { counts[d.cat] = (counts[d.cat] || 0) + 1; total++; }
   counts.on = total;
   counts.fav = ITEMS.filter(d => S.fav[d.id]).length;
-  counts.direct = ITEMS.filter(d => DIRECT.has(d.id) && d.kind === "calc" && isOn(d)).length;
+  counts.direct = ITEMS.filter(d => DIRECT.has(d.id) && (d.kind === "calc" || d.kind === "tip") && isOn(d)).length;
   const tabs = ["on", "fav", "direct", "family", "savings", "work", "health", "home", "learning", "giving", "investing", "ontario", "other", "ended"].filter(c => c === "on" || c === "fav" || c === "direct" || ITEMS.some(d => d.cat === c));
   $("svTabs").innerHTML = tabs.map(c => `<button type="button" class="tab" role="tab" data-tab="${c}" aria-selected="${!S.q && S.tab === c}">${CAT_LABEL[c]}${counts[c] ? `<span class="c">${counts[c]}</span>` : ""}</button>`).join("");
   const sit = L.base.net - L.R.net;
