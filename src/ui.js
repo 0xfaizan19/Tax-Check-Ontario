@@ -260,7 +260,7 @@ function cardHTML(d, withCat) {
   let body = "";
   if (on) {
     const v = s.v;
-    if (d.kind === "tip") body += `<p class="tiptext">${esc(d.tip)}</p>`;
+    if (d.tip) body += `<p class="tiptext">${esc(d.tip)}</p>`;
     if (d.fields && d.fields.length) body += `<div class="fields">${d.fields.map(f => fieldHTML(d, f, v[f.k])).join("")}</div>`;
     if (d.rows) {
       const max = d.rows.max || 10;
