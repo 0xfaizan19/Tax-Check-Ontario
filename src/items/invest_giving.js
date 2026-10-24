@@ -320,24 +320,29 @@ ITEMS.push(
 {
   id: "inv_rental", cat: "investing", kind: "calc",
   q: "I rent out a property or part of my home",
-  name: "Rental income and expenses, including rental losses",
+  name: "Rental income, expenses and repairs, including rental losses",
   lines: "T776 · L12599 · L12600",
-  hint: "Mortgage interest, property tax, insurance, utilities and repairs come off the rent, and a loss lowers your other income. For part of your home, deduct only the rented share; depreciation (CCA) can't create a loss.",
-  tags: "rental property landlord basement apartment t776 rental loss cca mortgage interest airbnb tenant",
+  hint: "Mortgage interest, property tax, insurance, utilities and repairs come off the rent, and a loss lowers your other income. Repairs to the rented unit alone count in full; shared costs count for the rented share. Depreciation (CCA) can't create a loss.",
+  tags: "rental property landlord basement apartment t776 rental loss cca mortgage interest airbnb tenant repairs maintenance renovation bathroom kitchen plumbing roof furnace",
   src: ["rental_property_loss"],
   rows: { label: "Property", add: "Add a property", max: 6, fields: [
     { k: "rent", label: "Rent received in 2026", type: "money", def: 18000 },
-    { k: "exp", label: "Expenses (mortgage interest, property tax, insurance, utilities, repairs)", type: "money", def: 21000 },
+    { k: "exp", label: "Expenses for the whole property (mortgage interest, property tax, insurance, utilities)", type: "money", def: 21000 },
     { k: "pct", label: "Share of the property that is rented (%)", type: "pct", def: 100 },
+    { k: "repUnit", label: "Repairs to the rented unit only (counted in full)", type: "money", def: 0 },
+    { k: "repShared", label: "Repairs to shared parts: roof, furnace, plumbing, common areas (counted for the rented share)", type: "money", def: 0 },
     { k: "cca", label: "Capital cost allowance I want to claim", type: "money", def: 0 }
   ] },
   inc(v, C, X) { for (const r of v.rows || []) C.income += num(r.rent); },   // gross rent (line 12599)
   ded(v, C, X) {
-    let before = 0, want = 0;
+    let before = 0, want = 0, rep = 0;
     for (const r of v.rows || []) {
-      const e = num(r.exp) * clamp(num(r.pct), 0, 100) / 100;
-      before += num(r.rent) - e; want += pos(num(r.cca)); C.income -= e;
+      const share = clamp(num(r.pct), 0, 100) / 100;
+      const repairs = pos(num(r.repUnit)) + pos(num(r.repShared)) * share;   // current repairs: unit-only in full, shared prorated
+      const e = num(r.exp) * share + repairs;
+      before += num(r.rent) - e; want += pos(num(r.cca)); C.income -= e; rep += repairs;
     }
+    if (rep) X.say(`Repairs deducted this year: ${fmt(rep)}. Upgrades that improve the property (not like-for-like fixes) go in CCA instead.`);
     const cca = Math.min(want, pos(before)), net = before - cca;   // CCA can't create or increase the net loss of all rentals
     C.income -= cca;
     X.say(net < 0 ? `Net rental loss: ${fmt(-net)}. It lowers your other income. Charge market rent and expect a profit over time, or the loss can be denied.`
